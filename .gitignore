@@ -1,0 +1,7 @@
+data/checks.jsonl
+config.json
+*.log
+*.tmp
+*.out
+bin/
+/ebs-netwatch

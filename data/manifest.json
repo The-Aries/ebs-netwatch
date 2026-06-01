@@ -1,0 +1,10 @@
+{
+  "generatedAt": "2026-06-01T19:57:16.097723707Z",
+  "retentionDays": 14,
+  "files": [
+    {
+      "date": "2026-06-01",
+      "path": "data/checks-2026-06-01.jsonl"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EBS Netwatch</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="page">
+    <header class="header">
+      <div>
+        <p class="eyebrow">Network availability</p>
+        <h1>EBS Netwatch</h1>
+        <p class="subtitle">Local-first network availability monitor</p>
+      </div>
+      <div class="header-meta">
+        <span id="updated-at" class="updated-at">Last updated n/a</span>
+      </div>
+    </header>
+
+    <section id="banner" class="banner banner-loading" aria-live="polite">
+      <div class="banner-icon" id="banner-icon" aria-hidden="true"></div>
+      <div class="banner-copy">
+        <h2 id="banner-title">Loading status…</h2>
+        <p id="banner-text">Waiting for the first check to complete.</p>
+      </div>
+    </section>
+
+    <section class="card system-card">
+      <div class="section-head">
+        <div>
+          <h2>System status</h2>
+          <p>Recent checks across the configured local and web-facing components.</p>
+        </div>
+        <div id="bucket-range" class="bucket-range"></div>
+      </div>
+      <div id="components" class="components" aria-live="polite"></div>
+    </section>
+
+    <section id="cycle-panel" class="detail-card cycle-panel" hidden>
+      <div class="section-head">
+        <div>
+          <h2>Selected cycle</h2>
+          <p>Click any status block to inspect the underlying check details.</p>
+        </div>
+        <button id="cycle-clear" class="text-button" type="button">Hide details</button>
+      </div>
+      <div id="cycle-detail" class="cycle-detail"></div>
+    </section>
+
+    <details id="recent-events-panel" class="card collapsible events-card">
+      <summary>
+        <div>
+          <h2>Recent events</h2>
+          <p>Show latest checks</p>
+        </div>
+        <span class="summary-hint">Latest 10 checks</span>
+      </summary>
+      <div id="recent-events" class="events"></div>
+    </details>
+  </main>
+  <div id="status-tooltip" class="status-tooltip" role="tooltip" aria-hidden="true"></div>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+[Unit]
+Description=Publish EBS Netwatch raw logs
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/projects/ebs-netwatch
+ExecStart=%h/projects/ebs-netwatch/scripts/publish-raw-logs.sh

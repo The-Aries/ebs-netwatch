@@ -120,17 +120,22 @@ The script:
 
 ## Publish schedule
 
-Publish every 30 minutes with either cron or a systemd timer.
+Run publishing every 30 minutes with a systemd user timer. The monitor stays separate; only the publish script runs on this schedule.
 
-### Cron
+### Install the user timer
 
-```cron
-*/30 * * * * cd %h/projects/ebs-netwatch && ./scripts/publish-raw-logs.sh
+```bash
+mkdir -p ~/.config/systemd/user
+cp scripts/systemd/ebs-netwatch-publish.* ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ebs-netwatch-publish.timer
+systemctl --user list-timers ebs-netwatch-publish.timer
+journalctl --user -u ebs-netwatch-publish.service -n 100 --no-pager
 ```
 
-### systemd timer
+### Timer files
 
-`/etc/systemd/system/ebs-netwatch-publish.service`
+`~/.config/systemd/user/ebs-netwatch-publish.service`
 
 ```ini
 [Unit]
@@ -142,7 +147,7 @@ WorkingDirectory=%h/projects/ebs-netwatch
 ExecStart=%h/projects/ebs-netwatch/scripts/publish-raw-logs.sh
 ```
 
-`/etc/systemd/system/ebs-netwatch-publish.timer`
+`~/.config/systemd/user/ebs-netwatch-publish.timer`
 
 ```ini
 [Unit]
@@ -152,15 +157,10 @@ Description=Run EBS Netwatch publish every 30 minutes
 OnBootSec=5min
 OnUnitActiveSec=30min
 Persistent=true
+Unit=ebs-netwatch-publish.service
 
 [Install]
 WantedBy=timers.target
-```
-
-Enable it with:
-
-```bash
-systemctl enable --now ebs-netwatch-publish.timer
 ```
 
 ## Manifest format

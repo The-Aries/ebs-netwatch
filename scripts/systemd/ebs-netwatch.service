@@ -1,0 +1,15 @@
+[Unit]
+Description=EBS Netwatch monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/projects/ebs-netwatch
+Environment=GOCACHE=/tmp/go-build-cache
+ExecStart=/usr/bin/go run ./cmd/ebs-netwatch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

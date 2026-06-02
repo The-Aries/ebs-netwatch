@@ -81,6 +81,30 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
    http://127.0.0.1:8080
    ```
 
+## Run the monitor as a user service
+
+Use a systemd user service to keep the monitor running continuously.
+
+### Install the monitor service
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp scripts/systemd/ebs-netwatch.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+systemctl --user enable --now ebs-netwatch.service
+systemctl --user status ebs-netwatch.service
+journalctl --user -u ebs-netwatch.service -n 100 --no-pager
+```
+
+### Verify that logs are growing
+
+```bash
+wc -l data/checks-*.jsonl
+sleep 90
+wc -l data/checks-*.jsonl
+tail -n 3 data/checks-*.jsonl
+```
+
 ## Raw logs and manifest
 
 - Daily raw logs are written to `data/checks-YYYY-MM-DD.jsonl`

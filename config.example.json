@@ -1,5 +1,5 @@
 {
-  "dashboardAddress": "127.0.0.1:8080",
+  "dashboardAddress": "127.0.0.1:58080",
   "dataDir": "data",
   "rawRetentionDays": 14,
   "normalIntervalSeconds": 30,

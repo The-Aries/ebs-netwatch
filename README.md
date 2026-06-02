@@ -7,7 +7,7 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
 - Linux only
 - Local JSONL check logs
 - Local static dashboard
-- Local dashboard server on `127.0.0.1:8080`
+- Local dashboard server on `127.0.0.1:58080`
 - Standard library first
 
 ## What it does
@@ -78,7 +78,7 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
 3. Open the dashboard:
 
    ```text
-   http://127.0.0.1:8080
+   http://127.0.0.1:58080
    ```
 
 ## Run the monitor as a user service

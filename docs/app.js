@@ -12,7 +12,11 @@ const bannerTextEl = document.getElementById("banner-text");
 const updatedAtEl = document.getElementById("updated-at");
 const bucketRangeEl = document.getElementById("bucket-range");
 
-const TIMELINE_BLOCK_COUNT = 20;
+const TIMELINE_WINDOW_HOURS = 24;
+const TIMELINE_BUCKET_MINUTES = 15;
+const TIMELINE_BUCKET_MS = TIMELINE_BUCKET_MINUTES * 60 * 1000;
+const TIMELINE_WINDOW_MS = TIMELINE_WINDOW_HOURS * 60 * 60 * 1000;
+const TIMELINE_BUCKET_COUNT = TIMELINE_WINDOW_MS / TIMELINE_BUCKET_MS;
 const RECENT_EVENTS_LIMIT = 10;
 const UI_STATE_KEY = "ebs-netwatch-ui-state-v1";
 const API_STATUS_URL = "api/status";
@@ -146,6 +150,158 @@ function bucketLabel(cycles, index) {
   return `Checked at ${formatTime(cycle.checkedAt)}`;
 }
 
+function formatBucketTime(value) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatBucketRange(start, end) {
+  return `${formatBucketTime(start)} - ${formatBucketTime(end)}`;
+}
+
+function alignTimeToBucket(value) {
+  return Math.ceil(value.getTime() / TIMELINE_BUCKET_MS) * TIMELINE_BUCKET_MS;
+}
+
+function sortCycles(cycles) {
+  return (Array.isArray(cycles) ? cycles : [])
+    .filter((cycle) => cycle && cycle.checkedAt)
+    .slice()
+    .sort((a, b) => new Date(a.checkedAt) - new Date(b.checkedAt));
+}
+
+function mergeCycles(...cycleGroups) {
+  const byCheckedAt = new Map();
+  for (const group of cycleGroups) {
+    for (const cycle of group || []) {
+      if (!cycle || !cycle.checkedAt) continue;
+      byCheckedAt.set(cycle.checkedAt, cycle);
+    }
+  }
+  return sortCycles(Array.from(byCheckedAt.values()));
+}
+
+function componentUptimeText(cycles, kind) {
+  let healthyChecks = 0;
+  let totalChecks = 0;
+
+  for (const cycle of cycles) {
+    const state = rowStateForCycle(cycle, kind);
+    totalChecks++;
+    if (state.status === "operational") {
+      healthyChecks++;
+    }
+  }
+
+  if (totalChecks === 0) {
+    return "n/a uptime";
+  }
+
+  const uptime = (healthyChecks / totalChecks) * 100;
+  return `${uptime.toFixed(2)}% uptime`;
+}
+
+function bucketStatusFromCounts(healthyChecks, totalChecks) {
+  if (totalChecks === 0) {
+    return "unknown";
+  }
+  if (healthyChecks === totalChecks) {
+    return "operational";
+  }
+  if ((healthyChecks / totalChecks) >= 0.5) {
+    return "degraded";
+  }
+  return "major_outage_candidate";
+}
+
+function collectFailedEndpointNames(cycles) {
+  const failed = [];
+  const seen = new Set();
+
+  for (const cycle of cycles) {
+    for (const endpoint of cycle.endpoints || []) {
+      if (endpoint.ok || seen.has(endpoint.name)) continue;
+      seen.add(endpoint.name);
+      failed.push(endpoint.name);
+    }
+  }
+
+  return failed;
+}
+
+function bucketSummaryMessage(status) {
+  switch (status) {
+    case "operational":
+      return "All checks were healthy.";
+    case "degraded":
+      return "Some checks reported degraded behavior.";
+    case "major_outage_candidate":
+      return "Configured endpoints were unavailable.";
+    default:
+      return "No check data available for this period.";
+  }
+}
+
+function buildTimeline(cycles, kind) {
+  const windowEnd = new Date(alignTimeToBucket(new Date()));
+  const windowStart = new Date(windowEnd.getTime() - TIMELINE_WINDOW_MS);
+  const buckets = [];
+  const sorted = sortCycles(cycles);
+  const windowCycles = [];
+
+  for (let index = 0; index < TIMELINE_BUCKET_COUNT; index++) {
+    const start = new Date(windowStart.getTime() + (index * TIMELINE_BUCKET_MS));
+    const end = new Date(start.getTime() + TIMELINE_BUCKET_MS);
+    buckets.push({
+      key: start.toISOString(),
+      start,
+      end,
+      cycles: [],
+      healthyChecks: 0,
+      totalChecks: 0,
+      status: "unknown",
+      latestCycle: null,
+      failedEndpoints: [],
+    });
+  }
+
+  for (const cycle of sorted) {
+    const checkedAt = new Date(cycle.checkedAt);
+    if (Number.isNaN(checkedAt.getTime()) || checkedAt < windowStart || checkedAt >= windowEnd) {
+      continue;
+    }
+
+    const index = Math.floor((checkedAt.getTime() - windowStart.getTime()) / TIMELINE_BUCKET_MS);
+    const bucket = buckets[index];
+    if (!bucket) {
+      continue;
+    }
+
+    bucket.cycles.push(cycle);
+    windowCycles.push(cycle);
+  }
+
+  for (const bucket of buckets) {
+    const states = bucket.cycles.map((cycle) => rowStateForCycle(cycle, kind));
+    bucket.totalChecks = bucket.cycles.length;
+    bucket.healthyChecks = states.filter((state) => state.status === "operational").length;
+    bucket.status = bucketStatusFromCounts(bucket.healthyChecks, bucket.totalChecks);
+    bucket.latestCycle = bucket.cycles[bucket.cycles.length - 1] || null;
+    bucket.failedEndpoints = collectFailedEndpointNames(bucket.cycles.filter((cycle, index) => states[index]?.status !== "operational"));
+  }
+
+  return {
+    windowStart,
+    windowEnd,
+    windowCycles,
+    buckets,
+  };
+}
+
 function bannerCopy(snapshot, recent) {
   if (!recent.length) {
     return { kind: "unknown", title: "No recent data", text: "No checks have completed yet." };
@@ -170,19 +326,6 @@ function cycleSummary(cycle) {
     healthyCount,
     failedText: failedNames.length ? failedNames.join(", ") : "none",
   };
-}
-
-function buildTimelineSlots(cycles, limit) {
-  const actual = cycles.slice(-limit);
-  const missing = Math.max(limit - actual.length, 0);
-  const slots = [];
-  for (let i = 0; i < missing; i++) {
-    slots.push({ placeholder: true, key: `missing-${i}` });
-  }
-  actual.forEach((cycle, index) => {
-    slots.push({ cycle, index, key: cycle.checkedAt });
-  });
-  return slots;
 }
 
 function rowStateForCycle(cycle, kind) {
@@ -229,100 +372,46 @@ function rowStateForCycle(cycle, kind) {
   return { status: cycle.status, label: "Checked" };
 }
 
-function tooltipMessageForStatus(status, failedEndpoints) {
-  const failedText = failedEndpoints ? failedEndpoints : "";
-
-  switch (status) {
-    case "operational":
-      return {
-        icon: "✓",
-        message: "All checks were healthy.",
-        extra: "",
-      };
-    case "degraded":
-      return {
-        icon: "!",
-        message: "Some checks reported degraded behavior.",
-        extra: failedText ? `Failed endpoints: ${failedText}` : "",
-      };
-    case "major_outage_candidate":
-      return {
-        icon: "×",
-        message: "Configured endpoints were unavailable.",
-        extra: failedText ? `Failed endpoints: ${failedText}` : "",
-      };
-    case "local_issue":
-      return {
-        icon: "●",
-        message: "Local gateway or network path issue detected.",
-        extra: "",
-      };
-    default:
-      return {
-        icon: "?",
-        message: "No check data available for this period.",
-        extra: "",
-      };
-  }
-}
-
-function tooltipDataForCycle(cycle, cycles, index, kind, rowState) {
-  const summary = cycleSummary(cycle);
-  const diag = cycle.diagnostics || {};
-  const failedEndpoints = cycle.endpoints.filter((endpoint) => !endpoint.ok).map((endpoint) => endpoint.name).join(", ");
-  const base = tooltipMessageForStatus(rowState.status, failedEndpoints);
-  const localContext = kind === "network" || kind === "gateway"
-    ? diag.gateway
-      ? diag.gatewayReachable
-        ? ""
-        : "Gateway unreachable."
-      : ""
-    : "";
+function bucketTooltipData(bucket) {
+  const countsText = bucket.totalChecks > 0
+    ? `Healthy checks: ${bucket.healthyChecks}/${bucket.totalChecks}`
+    : "Healthy checks: 0/0";
 
   return {
-    status: rowState.status,
-    timeRange: bucketLabel(cycles, index),
-    icon: base.icon,
-    message: base.message,
-    extra: [base.extra, localContext].filter(Boolean).join(" "),
-    failedEndpoints,
-    summary: `${summary.healthyCount}/${cycle.endpoints.length} healthy`,
+    status: bucket.status,
+    timeRange: formatBucketRange(bucket.start, bucket.end),
+    icon: iconForStatus(bucket.status),
+    message: bucketSummaryMessage(bucket.status),
+    countsText,
+    extra: bucket.failedEndpoints.length ? `Failed endpoints: ${bucket.failedEndpoints.join(", ")}` : "",
   };
 }
 
-function visibleCycles(recent, limit) {
-  return recent.slice(-limit);
-}
+function renderStatusBlocks(timeline, kind) {
+  if (!timeline.buckets.length) return `<div class="history-empty">No recent data</div>`;
 
-function renderStatusBlocks(cycles, kind, limit) {
-  const slots = buildTimelineSlots(cycles, limit);
-  if (!slots.length) return `<div class="history-empty">No recent data</div>`;
+  return timeline.buckets.map((bucket) => {
+    const tooltip = bucketTooltipData(bucket);
+    const latestCycle = bucket.latestCycle;
+    const selected = latestCycle && state.selectedCycleAt === latestCycle.checkedAt;
+    const cycleAtAttr = latestCycle ? `data-cycle-at="${escapeHtml(latestCycle.checkedAt)}"` : "";
+    const cycleLabel = latestCycle
+      ? `${kind} ${formatBucketRange(bucket.start, bucket.end)} ${bucket.healthyChecks}/${bucket.totalChecks} checks healthy`
+      : `${kind} ${formatBucketRange(bucket.start, bucket.end)} No check data available`;
 
-  return slots.map((slot) => {
-    if (slot.placeholder) {
-      return `
-        <span
-          class="history-block status-unknown is-empty"
-          aria-hidden="true"
-        ></span>
-      `;
-    }
-
-    const rowState = rowStateForCycle(slot.cycle, kind);
-    const selected = state.selectedCycleAt === slot.cycle.checkedAt;
-    const tooltip = tooltipDataForCycle(slot.cycle, cycles, slot.index, kind, rowState);
     return `
       <button
         type="button"
-        class="history-block ${statusClass(rowState.status)} ${selected ? "is-selected" : ""}"
-        data-cycle-at="${escapeHtml(slot.cycle.checkedAt)}"
+        class="history-block ${statusClass(bucket.status)} ${selected ? "is-selected" : ""} ${bucket.totalChecks === 0 ? "is-empty" : ""}"
+        data-bucket-key="${escapeHtml(bucket.key)}"
+        ${cycleAtAttr}
         data-tooltip-status="${escapeHtml(tooltip.status)}"
         data-tooltip-time-range="${escapeHtml(tooltip.timeRange)}"
         data-tooltip-message="${escapeHtml(tooltip.message)}"
+        data-tooltip-counts="${escapeHtml(tooltip.countsText)}"
         data-tooltip-extra="${escapeHtml(tooltip.extra)}"
         data-tooltip-icon="${escapeHtml(tooltip.icon)}"
-        data-tooltip-failed-endpoints="${escapeHtml(tooltip.failedEndpoints)}"
-        aria-label="${escapeHtml(`${kind} ${bucketLabel(cycles, slot.index)} ${rowState.label}`)}"
+        aria-label="${escapeHtml(cycleLabel)}"
       ></button>
     `;
   }).join("");
@@ -331,11 +420,15 @@ function renderStatusBlocks(cycles, kind, limit) {
 function tooltipMarkup(data) {
   const extra = data.extra ? `<div class="tooltip-extra">${escapeHtml(data.extra)}</div>` : "";
   return `
-    <div class="tooltip-date">${escapeHtml(data.timeRange)}</div>
+    <div class="tooltip-date">
+      <span>${escapeHtml(data.timeRange)}</span>
+      <span class="tooltip-status ${statusClass(data.status)}">${escapeHtml(humanStatus(data.status))}</span>
+    </div>
     <div class="tooltip-body">
       <span class="tooltip-icon ${statusClass(data.status)}" aria-hidden="true">${escapeHtml(data.icon)}</span>
       <div class="tooltip-text">
         <div class="tooltip-message">${escapeHtml(data.message)}</div>
+        <div class="tooltip-counts">${escapeHtml(data.countsText)}</div>
         ${extra}
       </div>
     </div>
@@ -399,6 +492,7 @@ function showTooltip(anchor) {
   const status = anchor.getAttribute("data-tooltip-status") || "unknown";
   const timeRange = anchor.getAttribute("data-tooltip-time-range") || "No data";
   const message = anchor.getAttribute("data-tooltip-message") || "No check data available for this period.";
+  const countsText = anchor.getAttribute("data-tooltip-counts") || "Healthy checks: 0/0";
   const extra = anchor.getAttribute("data-tooltip-extra") || "";
   const icon = anchor.getAttribute("data-tooltip-icon") || "?";
 
@@ -407,6 +501,7 @@ function showTooltip(anchor) {
     status,
     timeRange,
     message,
+    countsText,
     extra,
     icon,
   });
@@ -427,13 +522,13 @@ function restoreTooltipAfterRender() {
     return;
   }
 
-  const cycleAt = tooltipState.anchor.getAttribute("data-cycle-at");
-  if (!cycleAt) {
+  const bucketKey = tooltipState.anchor.getAttribute("data-bucket-key");
+  if (!bucketKey) {
     hideTooltip();
     return;
   }
 
-  const nextAnchor = Array.from(document.querySelectorAll("[data-cycle-at]")).find((button) => button.getAttribute("data-cycle-at") === cycleAt);
+  const nextAnchor = Array.from(document.querySelectorAll("[data-bucket-key]")).find((button) => button.getAttribute("data-bucket-key") === bucketKey);
   if (!nextAnchor) {
     hideTooltip();
     return;
@@ -602,6 +697,7 @@ function renderComponentRows(snapshot, recent) {
   ];
 
   return rows.map((row) => {
+    const timeline = buildTimeline(recent, row.kind);
     const latest = recent[recent.length - 1];
     const rowState = rowStateForCycle(latest, row.kind);
     const open = state.expandedComponentIds[row.kind];
@@ -609,21 +705,23 @@ function renderComponentRows(snapshot, recent) {
     return `
       <details class="component-group" data-component-id="${escapeHtml(row.kind)}" ${open ? "open" : ""}>
         <summary class="component-row">
-          <div class="component-main">
-            <div class="component-icon ${statusClass(rowState.status)}">${iconForStatus(rowState.status)}</div>
-            <div class="component-namewrap">
-              <div class="component-name">${escapeHtml(row.name)}</div>
-              <div class="component-meta">${escapeHtml(row.meta)}</div>
+          <div class="component-row-top">
+            <div class="component-main">
+              <div class="component-icon ${statusClass(rowState.status)}">${iconForStatus(rowState.status)}</div>
+              <div class="component-namewrap">
+                <div class="component-name">${escapeHtml(row.name)}</div>
+                <div class="component-meta">${escapeHtml(row.meta)}</div>
+              </div>
             </div>
+            <div class="component-summary">
+              <div class="component-summary-value">${escapeHtml(componentUptimeText(timeline.windowCycles, row.kind))}</div>
+              <div class="component-summary-note">Last 24 hours</div>
+            </div>
+            <div class="component-toggle" aria-hidden="true">⌄</div>
           </div>
           <div class="component-history" aria-label="${escapeHtml(row.name)} recent status blocks">
-            ${renderStatusBlocks(recent, row.kind, TIMELINE_BLOCK_COUNT)}
+            ${renderStatusBlocks(timeline, row.kind)}
           </div>
-          <div class="component-summary">
-            <div class="component-summary-value">${escapeHtml(row.summary(latest))}</div>
-            <div class="component-summary-note">${escapeHtml(row.note(latest))}</div>
-          </div>
-          <div class="component-toggle" aria-hidden="true">⌄</div>
         </summary>
         <div class="component-expanded">
           ${detailHtml}
@@ -764,16 +862,46 @@ async function loadStaticPayload() {
   };
 }
 
+function mergePayloads(primary, secondary) {
+  const primarySnapshot = primary?.snapshot || {};
+  const secondarySnapshot = secondary?.snapshot || {};
+  const recent = mergeCycles(primarySnapshot.recent, secondarySnapshot.recent);
+  const latest = recent[recent.length - 1] || null;
+
+  return {
+    generatedAt: primary?.generatedAt || secondary?.generatedAt || latest?.checkedAt || new Date().toISOString(),
+    snapshot: {
+      ...secondarySnapshot,
+      ...primarySnapshot,
+      updatedAt: latest?.checkedAt || primarySnapshot.updatedAt || secondarySnapshot.updatedAt || null,
+      status: latest?.status || primarySnapshot.status || secondarySnapshot.status || "unknown",
+      interface: latest?.interface || primarySnapshot.interface || secondarySnapshot.interface || {},
+      endpoints: latest?.endpoints || primarySnapshot.endpoints || secondarySnapshot.endpoints || [],
+      diagnostics: latest?.diagnostics ?? primarySnapshot.diagnostics ?? secondarySnapshot.diagnostics ?? null,
+      recent,
+    },
+  };
+}
+
 async function loadDashboardPayload() {
-  try {
-    return await fetchJson(API_STATUS_URL);
-  } catch (apiError) {
-    try {
-      return await loadStaticPayload();
-    } catch (staticError) {
-      throw new Error(`Unable to load dashboard data: ${staticError.message || apiError.message}`);
-    }
+  const apiResult = await fetchJson(API_STATUS_URL)
+    .then((payload) => ({ ok: true, payload }))
+    .catch((error) => ({ ok: false, error }));
+  const staticResult = await loadStaticPayload()
+    .then((payload) => ({ ok: true, payload }))
+    .catch((error) => ({ ok: false, error }));
+
+  if (apiResult.ok && staticResult.ok) {
+    return mergePayloads(apiResult.payload, staticResult.payload);
   }
+  if (apiResult.ok) {
+    return apiResult.payload;
+  }
+  if (staticResult.ok) {
+    return staticResult.payload;
+  }
+
+  throw new Error(`Unable to load dashboard data: ${staticResult.error.message || apiResult.error.message}`);
 }
 
 function applyBanner(snapshot, recent) {
@@ -815,7 +943,7 @@ function wireInteractions() {
     });
   });
 
-  document.querySelectorAll("[data-cycle-at]").forEach((button) => {
+  document.querySelectorAll("[data-bucket-key]").forEach((button) => {
     button.addEventListener("pointerenter", () => {
       showTooltip(button);
     });
@@ -831,7 +959,11 @@ function wireInteractions() {
     button.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      state.selectedCycleAt = button.getAttribute("data-cycle-at");
+      const cycleAt = button.getAttribute("data-cycle-at");
+      if (!cycleAt) {
+        return;
+      }
+      state.selectedCycleAt = cycleAt;
       render(state.payload);
     });
   });
@@ -847,15 +979,15 @@ function wireInteractions() {
 
 function render(payload) {
   const snapshot = payload?.snapshot || {};
-  const allRecent = Array.isArray(snapshot.recent) ? snapshot.recent : [];
-  const timelineRecent = visibleCycles(allRecent, TIMELINE_BLOCK_COUNT);
-  const visibleForEvents = visibleCycles(allRecent, RECENT_EVENTS_LIMIT);
+  const allRecent = sortCycles(Array.isArray(snapshot.recent) ? snapshot.recent : []);
+  const visibleForEvents = allRecent.slice(-RECENT_EVENTS_LIMIT);
   const selectedCycle = resolveSelectedCycle(allRecent);
+  const timeline = buildTimeline(allRecent, "web");
 
-  applyHeader(snapshot, timelineRecent);
-  applyBanner(snapshot, timelineRecent);
-  bucketRangeEl.textContent = timelineRecent.length ? `${formatShortTime(timelineRecent[0].checkedAt)} - ${formatShortTime(timelineRecent[timelineRecent.length - 1].checkedAt)}` : "No data yet";
-  componentsEl.innerHTML = renderComponentRows(snapshot, timelineRecent);
+  applyHeader(snapshot, allRecent);
+  applyBanner(snapshot, allRecent);
+  bucketRangeEl.textContent = `${formatBucketRange(timeline.windowStart, timeline.windowEnd)}`;
+  componentsEl.innerHTML = renderComponentRows(snapshot, allRecent);
 
   if (selectedCycle) {
     cyclePanelEl.hidden = false;

@@ -7,10 +7,12 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"runtime"
 	"sort"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +27,7 @@ const recentHistoryWindow = 24 * time.Hour
 const rawLogMaintenanceInterval = time.Hour
 
 var preparePublish = flag.Bool("prepare-publish", false, "refresh raw log retention and manifest, then exit")
+var bindOverride = flag.String("bind", "", "override the dashboard bind address (address:port)")
 
 func main() {
 	flag.Parse()
@@ -44,9 +47,12 @@ func run() error {
 		return errors.New("ebs-netwatch supports Linux only")
 	}
 
-	cfg, err := config.Load("config.json")
+	cfg, err := loadRuntimeConfig()
 	if err != nil {
 		return err
+	}
+	if trimmed := strings.TrimSpace(*bindOverride); trimmed != "" {
+		cfg.DashboardAddress = trimmed
 	}
 
 	defaultInterface, gateway, err := network.DetectDefaultRoute()
@@ -97,7 +103,8 @@ func run() error {
 	}()
 
 	srv := server.New(runner)
-	log.Printf("dashboard listening on http://%s", cfg.DashboardAddress)
+	fmt.Printf("Dashboard listening on %s\n", cfg.DashboardAddress)
+	printStartupURLs(cfg.DashboardAddress)
 	if err := srv.Run(ctx, cfg.DashboardAddress); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("dashboard server failed: %w", err)
 	}
@@ -112,9 +119,17 @@ func runPreparePublish() error {
 	return maintainRawLogs(cfg)
 }
 
+func loadRuntimeConfig() (config.Config, error) {
+	return loadConfigWithFallback("config.json")
+}
+
 func loadMaintenanceConfig() (config.Config, error) {
-	if _, err := os.Stat("config.json"); err == nil {
-		return config.Load("config.json")
+	return loadConfigWithFallback("config.json")
+}
+
+func loadConfigWithFallback(path string) (config.Config, error) {
+	if _, err := os.Stat(path); err == nil {
+		return config.Load(path)
 	} else if !os.IsNotExist(err) {
 		return config.Config{}, err
 	}
@@ -187,4 +202,122 @@ func loadCyclesFromPath(path string) []monitor.CycleResult {
 		return cycles[i].CheckedAt.Before(cycles[j].CheckedAt)
 	})
 	return cycles
+}
+
+func printStartupURLs(bindAddress string) {
+	host, port, err := net.SplitHostPort(bindAddress)
+	if err != nil {
+		fmt.Printf("Local URL: unavailable\n")
+		fmt.Printf("LAN URL: not detected\n")
+		return
+	}
+
+	fmt.Printf("Local URL: %s\n", localURLForHost(host, port))
+
+	lanURLs := lanURLsForBind(host, port)
+	if len(lanURLs) == 0 {
+		fmt.Printf("LAN URL: not detected\n")
+		return
+	}
+	for _, url := range lanURLs {
+		fmt.Printf("LAN URL: %s\n", url)
+	}
+}
+
+func localURLForHost(host, port string) string {
+	switch host {
+	case "", "0.0.0.0", "::":
+		return "http://127.0.0.1:" + port
+	}
+
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return "http://127.0.0.1:" + port
+	}
+
+	return "http://" + net.JoinHostPort(host, port)
+}
+
+func lanURLsForBind(host, port string) []string {
+	switch host {
+	case "", "0.0.0.0", "::":
+		return detectLanURLs(port)
+	}
+
+	ip := net.ParseIP(host)
+	if ip == nil || ip.To4() == nil || ip.IsLoopback() || ip.IsUnspecified() {
+		return nil
+	}
+	if ip.IsPrivate() {
+		return []string{"http://" + net.JoinHostPort(host, port)}
+	}
+	return nil
+}
+
+func detectLanURLs(port string) []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+
+	urls := make([]string, 0, len(ifaces))
+	seen := map[string]struct{}{}
+	for _, iface := range ifaces {
+		if !ifaceHasLanCandidate(iface) {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, addr := range addrs {
+			ip := ipv4FromAddr(addr)
+			if ip == nil || !ip.IsPrivate() || ip.IsLoopback() || ip.IsUnspecified() {
+				continue
+			}
+			url := "http://" + net.JoinHostPort(ip.String(), port)
+			if _, ok := seen[url]; ok {
+				continue
+			}
+			seen[url] = struct{}{}
+			urls = append(urls, url)
+		}
+	}
+	sort.Strings(urls)
+	return urls
+}
+
+func ifaceHasLanCandidate(iface net.Interface) bool {
+	if iface.Flags&net.FlagUp == 0 {
+		return false
+	}
+	if iface.Flags&net.FlagLoopback != 0 {
+		return false
+	}
+
+	name := strings.ToLower(iface.Name)
+	ignoredPrefixes := []string{
+		"docker", "br", "veth", "virbr", "cni", "flannel", "tailscale", "zt",
+		"wg", "tun", "tap", "vmnet", "vboxnet", "utun", "awdl", "llw",
+		"podman", "kube", "sit", "gre", "dummy", "ip6tnl", "ip6gre",
+	}
+	for _, prefix := range ignoredPrefixes {
+		if strings.HasPrefix(name, prefix) {
+			return false
+		}
+	}
+	return true
+}
+
+func ipv4FromAddr(addr net.Addr) net.IP {
+	switch value := addr.(type) {
+	case *net.IPNet:
+		if ip := value.IP.To4(); ip != nil {
+			return ip
+		}
+	case *net.IPAddr:
+		if ip := value.IP.To4(); ip != nil {
+			return ip
+		}
+	}
+	return nil
 }

@@ -7,12 +7,12 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
 - Linux only
 - Local JSONL check logs
 - Local static dashboard
-- Local dashboard server on `127.0.0.1:58080`
+- Local dashboard server on `0.0.0.0:58080`
 - Standard library first
 
 ## What it does
 
-- Loads configuration from `config.json`
+- Uses `config.json` when present, otherwise built-in defaults
 - Checks configurable HTTP endpoints
 - Ships with these default endpoints:
   - `google_204`: `https://www.google.com/generate_204`, expected status `204`
@@ -63,7 +63,7 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
 
 ## Run it locally
 
-1. Copy the example config:
+1. Optional: copy the example config if you want to customize settings:
 
    ```bash
    cp config.example.json config.json
@@ -80,6 +80,20 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
    ```text
    http://127.0.0.1:58080
    ```
+
+The server prints a local URL and any detected LAN URLs when it starts. Access from LAN depends on your firewall and network isolation rules.
+
+To force a local-only bind:
+
+```bash
+go run ./cmd/ebs-netwatch -bind 127.0.0.1:58080
+```
+
+To use a custom port on all interfaces:
+
+```bash
+go run ./cmd/ebs-netwatch -bind 0.0.0.0:18080
+```
 
 ## Run the monitor as a user service
 

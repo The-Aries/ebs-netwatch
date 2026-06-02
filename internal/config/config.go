@@ -33,7 +33,7 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		DashboardAddress:       "127.0.0.1:58080",
+		DashboardAddress:       "0.0.0.0:58080",
 		DataDir:                "data",
 		RawRetentionDays:       14,
 		NormalIntervalSeconds:  30,

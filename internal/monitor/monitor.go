@@ -71,10 +71,11 @@ type Snapshot struct {
 }
 
 type Runner struct {
-	cfg      config.Config
-	linkInfo network.Info
-	client   *http.Client
-	appender *storage.Appender
+	cfg          config.Config
+	linkInfo     network.Info
+	client       *http.Client
+	appender     *storage.Appender
+	recentWindow time.Duration
 
 	mu       sync.RWMutex
 	status   Status
@@ -82,11 +83,12 @@ type Runner struct {
 	recent   []CycleResult
 }
 
-func NewRunner(cfg config.Config, linkInfo network.Info, appender *storage.Appender, recent []CycleResult) *Runner {
+func NewRunner(cfg config.Config, linkInfo network.Info, appender *storage.Appender, recent []CycleResult, recentWindow time.Duration) *Runner {
 	timeout := time.Duration(cfg.HTTPTimeoutSeconds) * time.Second
 	seededRecent := cloneCycles(recent)
-	if len(seededRecent) > 20 {
-		seededRecent = seededRecent[len(seededRecent)-20:]
+	if recentWindow > 0 {
+		cutoff := time.Now().UTC().Add(-recentWindow)
+		seededRecent = trimCyclesSince(seededRecent, cutoff)
 	}
 
 	status := StatusOperational
@@ -110,10 +112,11 @@ func NewRunner(cfg config.Config, linkInfo network.Info, appender *storage.Appen
 		client: &http.Client{
 			Timeout: timeout,
 		},
-		appender: appender,
-		status:   status,
-		snapshot: snapshot,
-		recent:   seededRecent,
+		appender:     appender,
+		recentWindow: recentWindow,
+		status:       status,
+		snapshot:     snapshot,
+		recent:       seededRecent,
 	}
 }
 
@@ -173,8 +176,9 @@ func (r *Runner) runOnce(ctx context.Context) error {
 	r.mu.Lock()
 	r.status = status
 	r.recent = append(r.recent, cycle)
-	if len(r.recent) > 20 {
-		r.recent = r.recent[len(r.recent)-20:]
+	if r.recentWindow > 0 {
+		cutoff := time.Now().UTC().Add(-r.recentWindow)
+		r.recent = trimCyclesSince(r.recent, cutoff)
 	}
 	r.snapshot = Snapshot{
 		UpdatedAt:   cycle.CheckedAt,
@@ -371,6 +375,24 @@ func cloneCycles(cycles []CycleResult) []CycleResult {
 		}
 	}
 	return out
+}
+
+func trimCyclesSince(cycles []CycleResult, cutoff time.Time) []CycleResult {
+	if len(cycles) == 0 {
+		return cycles
+	}
+
+	idx := 0
+	for idx < len(cycles) && cycles[idx].CheckedAt.Before(cutoff) {
+		idx++
+	}
+	if idx == 0 {
+		return cycles
+	}
+	if idx >= len(cycles) {
+		return nil
+	}
+	return append([]CycleResult(nil), cycles[idx:]...)
 }
 
 func intPtr(v int) *int {

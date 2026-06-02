@@ -21,7 +21,7 @@ import (
 	"ebs-netwatch/internal/storage"
 )
 
-const recentHistoryLimit = 20
+const recentHistoryWindow = 24 * time.Hour
 const rawLogMaintenanceInterval = time.Hour
 
 var preparePublish = flag.Bool("prepare-publish", false, "refresh raw log retention and manifest, then exit")
@@ -68,8 +68,8 @@ func run() error {
 	}
 
 	appender := storage.NewAppender(cfg.DataDir)
-	recentCycles := loadRecentCycles(cfg.DataDir, recentHistoryLimit)
-	runner := monitor.NewRunner(cfg, linkInfo, appender, recentCycles)
+	recentCycles := loadRecentCycles(cfg.DataDir, recentHistoryWindow)
+	runner := monitor.NewRunner(cfg, linkInfo, appender, recentCycles, recentHistoryWindow)
 
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
@@ -133,7 +133,7 @@ func maintainRawLogs(cfg config.Config) error {
 	return nil
 }
 
-func loadRecentCycles(dir string, limit int) []monitor.CycleResult {
+func loadRecentCycles(dir string, window time.Duration) []monitor.CycleResult {
 	files, err := storage.DailyRawLogFiles(dir)
 	if err != nil {
 		log.Printf("history scan warning: %v", err)
@@ -151,8 +151,16 @@ func loadRecentCycles(dir string, limit int) []monitor.CycleResult {
 		return cycles[i].CheckedAt.Before(cycles[j].CheckedAt)
 	})
 
-	if len(cycles) > limit {
-		cycles = cycles[len(cycles)-limit:]
+	if window > 0 {
+		cutoff := time.Now().UTC().Add(-window)
+		filtered := make([]monitor.CycleResult, 0, len(cycles))
+		for _, cycle := range cycles {
+			if cycle.CheckedAt.Before(cutoff) {
+				continue
+			}
+			filtered = append(filtered, cycle)
+		}
+		cycles = filtered
 	}
 	return cycles
 }

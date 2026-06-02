@@ -138,9 +138,12 @@ The script:
 - runs `go test ./...`
 - runs the publish preparation command
 - updates `data/manifest.json`
-- refreshes `docs/`
-- commits only if staged tracked files changed
+- mirrors raw log files into `docs/data/`
+- stages only raw log artifacts
+- commits only if those staged publish files changed
 - pushes to the current branch
+
+Static assets under `docs/` are updated by normal functional commits, not by the automatic log publish path.
 
 ## Publish schedule
 

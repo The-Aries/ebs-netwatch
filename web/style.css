@@ -350,8 +350,8 @@ h1 {
   display: flex;
   align-items: center;
   gap: 1px;
-  width: min(100%, 690px);
-  max-width: 690px;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   padding: 2px 0 0;

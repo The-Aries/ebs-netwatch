@@ -13,10 +13,11 @@ const updatedAtEl = document.getElementById("updated-at");
 const bucketRangeEl = document.getElementById("bucket-range");
 
 const TIMELINE_WINDOW_HOURS = 24;
-const TIMELINE_BUCKET_MINUTES = 30;
+const TIMELINE_BUCKET_MINUTES = 10;
 const TIMELINE_BUCKET_MS = TIMELINE_BUCKET_MINUTES * 60 * 1000;
 const TIMELINE_WINDOW_MS = TIMELINE_WINDOW_HOURS * 60 * 60 * 1000;
 const TIMELINE_BUCKET_COUNT = TIMELINE_WINDOW_MS / TIMELINE_BUCKET_MS;
+const PUBLISH_INTERVAL_MS = 30 * 60 * 1000;
 const RECENT_EVENTS_LIMIT = 10;
 const UI_STATE_KEY = "ebs-netwatch-ui-state-v1";
 const API_STATUS_URL = "api/status";
@@ -252,6 +253,7 @@ function buildTimeline(cycles, kind) {
   const buckets = [];
   const sorted = sortCycles(cycles);
   const windowCycles = [];
+  let lastDataBucketIndex = -1;
 
   for (let index = 0; index < TIMELINE_BUCKET_COUNT; index++) {
     const start = new Date(windowStart.getTime() + (index * TIMELINE_BUCKET_MS));
@@ -283,6 +285,9 @@ function buildTimeline(cycles, kind) {
 
     bucket.cycles.push(cycle);
     windowCycles.push(cycle);
+    if (index > lastDataBucketIndex) {
+      lastDataBucketIndex = index;
+    }
   }
 
   for (const bucket of buckets) {
@@ -294,11 +299,20 @@ function buildTimeline(cycles, kind) {
     bucket.failedEndpoints = collectFailedEndpointNames(bucket.cycles.filter((cycle, index) => states[index]?.status !== "operational"));
   }
 
+  let renderedBuckets = [];
+  if (lastDataBucketIndex >= 0) {
+    const latestBucket = buckets[lastDataBucketIndex];
+    const tailGapMs = windowEnd.getTime() - latestBucket.end.getTime();
+    renderedBuckets = tailGapMs <= PUBLISH_INTERVAL_MS
+      ? buckets.slice(0, lastDataBucketIndex + 1)
+      : buckets;
+  }
+
   return {
     windowStart,
     windowEnd,
     windowCycles,
-    buckets,
+    buckets: renderedBuckets,
   };
 }
 

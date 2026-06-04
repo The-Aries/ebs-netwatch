@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-04T21:36:11.225235364Z",
+  "generatedAt": "2026-06-04T22:07:11.089246933Z",
   "retentionDays": 14,
   "files": [
     {
@@ -17,6 +17,10 @@
     {
       "date": "2026-06-04",
       "path": "data/checks-2026-06-04.jsonl"
+    },
+    {
+      "date": "2026-06-05",
+      "path": "data/checks-2026-06-05.jsonl"
     }
   ]
 }

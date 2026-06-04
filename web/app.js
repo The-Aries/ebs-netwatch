@@ -13,7 +13,7 @@ const updatedAtEl = document.getElementById("updated-at");
 const bucketRangeEl = document.getElementById("bucket-range");
 
 const TIMELINE_WINDOW_HOURS = 24;
-const TIMELINE_BUCKET_MINUTES = 15;
+const TIMELINE_BUCKET_MINUTES = 30;
 const TIMELINE_BUCKET_MS = TIMELINE_BUCKET_MINUTES * 60 * 1000;
 const TIMELINE_WINDOW_MS = TIMELINE_WINDOW_HOURS * 60 * 60 * 1000;
 const TIMELINE_BUCKET_COUNT = TIMELINE_WINDOW_MS / TIMELINE_BUCKET_MS;
@@ -99,7 +99,7 @@ function humanStatus(status) {
     case "major_outage_candidate":
       return "Major outage detected";
     default:
-      return "No recent data";
+      return "Maintenance";
   }
 }
 
@@ -242,7 +242,7 @@ function bucketSummaryMessage(status) {
     case "major_outage_candidate":
       return "Configured endpoints were unavailable.";
     default:
-      return "No check data available for this period.";
+      return "Maintenance period. No data recorded.";
   }
 }
 
@@ -304,18 +304,18 @@ function buildTimeline(cycles, kind) {
 
 function bannerCopy(snapshot, recent) {
   if (!recent.length) {
-    return { kind: "unknown", title: "No recent data", text: "No checks have completed yet." };
+    return { kind: "unknown", title: "No data yet", text: "Waiting for the first check." };
   }
 
   switch (snapshot.status) {
     case "operational":
-      return { kind: "operational", title: "Fully operational", text: "All configured checks are currently healthy." };
+      return { kind: "operational", title: "Fully operational", text: "All checks are healthy." };
     case "degraded":
-      return { kind: "degraded", title: "Degraded performance", text: "One endpoint is unhealthy, but the service is still mostly available." };
+      return { kind: "degraded", title: "Degraded performance", text: "One check is failing." };
     case "major_outage_candidate":
-      return { kind: "major", title: "Major outage detected", text: "Two or more checks are unhealthy, which suggests a broader issue." };
+      return { kind: "major", title: "Major outage detected", text: "Most checks are failing." };
     default:
-      return { kind: "unknown", title: "No recent data", text: "No checks have completed yet." };
+      return { kind: "unknown", title: "No data yet", text: "Waiting for the first check." };
   }
 }
 
@@ -388,7 +388,7 @@ function bucketTooltipData(bucket) {
 }
 
 function renderStatusBlocks(timeline, kind) {
-  if (!timeline.buckets.length) return `<div class="history-empty">No recent data</div>`;
+  if (!timeline.buckets.length) return `<div class="history-empty">Maintenance period</div>`;
 
   return timeline.buckets.map((bucket) => {
     const tooltip = bucketTooltipData(bucket);
@@ -397,7 +397,7 @@ function renderStatusBlocks(timeline, kind) {
     const cycleAtAttr = latestCycle ? `data-cycle-at="${escapeHtml(latestCycle.checkedAt)}"` : "";
     const cycleLabel = latestCycle
       ? `${kind} ${formatBucketRange(bucket.start, bucket.end)} ${bucket.healthyChecks}/${bucket.totalChecks} checks healthy`
-      : `${kind} ${formatBucketRange(bucket.start, bucket.end)} No check data available`;
+      : `${kind} ${formatBucketRange(bucket.start, bucket.end)} Maintenance period, no checks recorded`;
 
     return `
       <button
@@ -491,7 +491,7 @@ function showTooltip(anchor) {
 
   const status = anchor.getAttribute("data-tooltip-status") || "unknown";
   const timeRange = anchor.getAttribute("data-tooltip-time-range") || "No data";
-  const message = anchor.getAttribute("data-tooltip-message") || "No check data available for this period.";
+  const message = anchor.getAttribute("data-tooltip-message") || "Maintenance period. No data recorded.";
   const countsText = anchor.getAttribute("data-tooltip-counts") || "Healthy checks: 0/0";
   const extra = anchor.getAttribute("data-tooltip-extra") || "";
   const icon = anchor.getAttribute("data-tooltip-icon") || "?";
@@ -539,7 +539,7 @@ function restoreTooltipAfterRender() {
 
 function endpointRows(cycle) {
   if (!cycle || !cycle.endpoints.length) {
-    return `<div class="empty-state small"><strong>No endpoint data</strong><p>No endpoint checks were available for this cycle.</p></div>`;
+    return `<div class="empty-state small"><strong>No endpoint data</strong><p>No endpoint checks for this cycle.</p></div>`;
   }
 
   return cycle.endpoints.map((endpoint) => `
@@ -562,7 +562,7 @@ function endpointRows(cycle) {
 function networkTiles(cycle) {
   const diag = cycle?.diagnostics;
   if (!diag) {
-    return `<div class="empty-state small"><strong>No diagnostics</strong><p>Network diagnostics only appear after an abnormal cycle.</p></div>`;
+    return `<div class="empty-state small"><strong>No diagnostics</strong><p>Diagnostics appear after a failure.</p></div>`;
   }
 
   return `
@@ -627,7 +627,7 @@ function componentDetails(kind, cycle) {
       <div class="expand-section">
         <div class="expand-head">
           <h3>DNS results</h3>
-          <p>Lookup results for hosts touched during abnormal checks.</p>
+          <p>Lookup results from abnormal checks.</p>
         </div>
         ${dnsList(cycle)}
       </div>
@@ -639,7 +639,7 @@ function componentDetails(kind, cycle) {
       <div class="expand-section">
         <div class="expand-head">
           <h3>Gateway check</h3>
-          <p>Probe result from the latest abnormal cycle.</p>
+          <p>Gateway probe from the latest abnormal check.</p>
         </div>
         ${networkTiles(cycle)}
       </div>
@@ -656,7 +656,7 @@ function renderComponentRows(snapshot, recent) {
       name: "Web availability",
       meta: `${snapshot.endpoints.length} endpoints`,
       summary: (cycle) => formatEndpointSummary(cycle),
-      note: () => "Configured endpoint checks",
+      note: () => "Configured checks",
     },
     {
       kind: "network",
@@ -673,7 +673,7 @@ function renderComponentRows(snapshot, recent) {
     {
       kind: "dns",
       name: "DNS diagnostics",
-      meta: "Checked on failure",
+      meta: "Checked on failures",
       summary: (cycle) => {
         if (!cycle) return "No data";
         const diag = cycle.diagnostics;
@@ -715,7 +715,7 @@ function renderComponentRows(snapshot, recent) {
             </div>
             <div class="component-summary">
               <div class="component-summary-value">${escapeHtml(componentUptimeText(timeline.windowCycles, row.kind))}</div>
-              <div class="component-summary-note">Last 24 hours</div>
+              <div class="component-summary-note">Last 24h</div>
             </div>
             <div class="component-toggle" aria-hidden="true">⌄</div>
           </div>
@@ -803,7 +803,7 @@ function renderCycleDetail(cycle, recent) {
 
 function renderRecentEvents(recent) {
   if (!recent.length) {
-    return `<div class="empty-state"><strong>No recent events</strong><p>The first monitoring cycle has not completed yet.</p></div>`;
+    return `<div class="empty-state"><strong>No recent checks</strong><p>The monitor has not completed a check yet.</p></div>`;
   }
 
   return recent.slice().reverse().map((cycle) => `
@@ -1041,7 +1041,7 @@ refresh().catch((error) => {
   bannerEl.className = "banner banner-unknown";
   bannerIconEl.className = "banner-icon status-unknown";
   bannerIconEl.textContent = "?";
-  bannerTitleEl.textContent = "No recent data";
+      bannerTitleEl.textContent = "No data yet";
   bannerTextEl.textContent = error.message;
   updatedAtEl.textContent = "Last updated n/a";
   bucketRangeEl.textContent = "No data yet";

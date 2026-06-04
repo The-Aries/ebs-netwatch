@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EBS Netwatch</title>
-  <link rel="stylesheet" href="style.css?v=20260602-4">
+  <link rel="stylesheet" href="style.css?v=20260604-2">
 </head>
 <body>
   <main class="page">
@@ -12,7 +12,7 @@
       <div>
         <p class="eyebrow">Network availability</p>
         <h1>EBS Netwatch</h1>
-        <p class="subtitle">Local-first network availability monitor</p>
+        <p class="subtitle">Local network and web checks</p>
       </div>
       <div class="header-meta">
         <span id="updated-at" class="updated-at">Last updated n/a</span>
@@ -23,7 +23,7 @@
       <div class="banner-icon" id="banner-icon" aria-hidden="true"></div>
       <div class="banner-copy">
         <h2 id="banner-title">Loading status…</h2>
-        <p id="banner-text">Waiting for the first check to complete.</p>
+        <p id="banner-text">Waiting for the first check.</p>
       </div>
     </section>
 
@@ -31,9 +31,16 @@
       <div class="section-head">
         <div>
           <h2>System status</h2>
-          <p>Recent checks across the configured local and web-facing components.</p>
+          <p>Checks for the main web and local components.</p>
         </div>
         <div id="bucket-range" class="bucket-range"></div>
+      </div>
+      <div class="status-legend" aria-label="Status legend">
+        <div class="legend-item"><span class="legend-swatch status-operational" aria-hidden="true"></span><span>Green: normal</span></div>
+        <div class="legend-item"><span class="legend-swatch status-degraded" aria-hidden="true"></span><span>Yellow: degraded</span></div>
+        <div class="legend-item"><span class="legend-swatch status-major" aria-hidden="true"></span><span>Red: outage</span></div>
+        <div class="legend-item"><span class="legend-swatch status-local" aria-hidden="true"></span><span>Dark: local issue</span></div>
+        <div class="legend-item"><span class="legend-swatch status-unknown" aria-hidden="true"></span><span>Gray: maintenance or no data</span></div>
       </div>
       <div id="components" class="components" aria-live="polite"></div>
     </section>
@@ -41,8 +48,8 @@
     <section id="cycle-panel" class="detail-card cycle-panel" hidden>
       <div class="section-head">
         <div>
-          <h2>Selected cycle</h2>
-          <p>Click any status block to inspect the underlying check details.</p>
+          <h2>Selected check</h2>
+          <p>Click a status block to see its details.</p>
         </div>
         <button id="cycle-clear" class="text-button" type="button">Hide details</button>
       </div>
@@ -53,9 +60,9 @@
       <summary>
         <div>
           <h2>Recent events</h2>
-          <p>Show latest checks</p>
+          <p>Latest checks</p>
         </div>
-        <span class="summary-hint">Latest 10 checks</span>
+        <span class="summary-hint">Latest 10</span>
       </summary>
       <div id="recent-events" class="events"></div>
     </details>
@@ -65,6 +72,6 @@
     </footer>
   </main>
   <div id="status-tooltip" class="status-tooltip" role="tooltip" aria-hidden="true"></div>
-  <script src="app.js?v=20260602-3"></script>
+  <script src="app.js?v=20260604-2"></script>
 </body>
 </html>

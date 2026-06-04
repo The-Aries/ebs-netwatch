@@ -870,7 +870,9 @@ h1 {
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
-  padding: 0 0 2px;
+  padding: 2px 0 12px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--border);
 }
 
 .collapsible > summary::-webkit-details-marker {
@@ -886,6 +888,10 @@ h1 {
   margin: 3px 0 0;
   color: var(--muted);
   font-size: 11px;
+}
+
+.events-card > summary {
+  padding-bottom: 12px;
 }
 
 .summary-hint {

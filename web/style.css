@@ -866,12 +866,12 @@ h1 {
 .collapsible > summary {
   list-style: none;
   display: flex;
-  align-items: center;
+  align-items: baseline;
   justify-content: space-between;
   gap: 12px;
   cursor: pointer;
-  padding: 2px 0 12px;
-  margin-bottom: 10px;
+  padding: 6px 0 12px;
+  margin-bottom: 12px;
   border-bottom: 1px solid var(--border);
 }
 
@@ -881,13 +881,13 @@ h1 {
 
 .collapsible > summary h2 {
   margin: 0;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .collapsible > summary p {
-  margin: 3px 0 0;
+  margin: 4px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .events-card > summary {

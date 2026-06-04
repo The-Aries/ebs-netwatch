@@ -1,20 +1,20 @@
 # EBS Netwatch
 
-EBS Netwatch is a small Linux-only, local-first network availability monitor.
+Linux-only network availability monitor.
 
-## Scope for v1
+## Scope
 
 - Linux only
 - Local JSONL check logs
-- Local static dashboard
-- Local dashboard server on `0.0.0.0:58080`
+- Static dashboard
+- Dashboard bind defaults to `0.0.0.0:58080`
 - Standard library first
 
-## What it does
+## Behavior
 
-- Uses `config.json` when present, otherwise built-in defaults
+- Reads `config.json` when present, otherwise uses built-in defaults
 - Checks configurable HTTP endpoints
-- Ships with these default endpoints:
+- Default endpoints:
   - `google_204`: `https://www.google.com/generate_204`, expected status `204`
   - `cloudflare_trace`: `https://www.cloudflare.com/cdn-cgi/trace`, expected status `200-399`
   - `gstatic_204`: `https://www.gstatic.com/generate_204`, expected status `204`
@@ -22,13 +22,13 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
 - Detects connection type as `ethernet`, `wifi`, or `unknown`
 - Reads link speed from `/sys/class/net/<iface>/speed` when available
 - Uses a 30 second normal interval
-- Uses a 10 second non-operational interval
+- Uses a 10 second suspect interval
 - Runs gateway and DNS diagnostics when endpoint checks are abnormal
 - Writes daily raw logs to `data/checks-YYYY-MM-DD.jsonl`
 - Keeps raw logs for 14 days by default
 - Maintains `data/manifest.json` for static publishing and GitHub Pages loading
 
-## Project layout
+## Layout
 
 ```text
 .
@@ -61,7 +61,7 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
     └── style.css
 ```
 
-## Run it locally
+## Run locally
 
 1. Optional: copy the example config if you want to customize settings:
 
@@ -81,7 +81,7 @@ EBS Netwatch is a small Linux-only, local-first network availability monitor.
    http://127.0.0.1:58080
    ```
 
-The server prints a local URL and any detected LAN URLs when it starts. Access from LAN depends on your firewall and network isolation rules.
+The server prints a local URL and detected LAN URLs at startup. LAN access depends on your firewall and network isolation.
 
 To force a local-only bind:
 
@@ -89,15 +89,15 @@ To force a local-only bind:
 go run ./cmd/ebs-netwatch -bind 127.0.0.1:58080
 ```
 
-To use a custom port on all interfaces:
+To use a different port on all interfaces:
 
 ```bash
 go run ./cmd/ebs-netwatch -bind 0.0.0.0:18080
 ```
 
-## Run the monitor as a user service
+## Run as a user service
 
-Use a systemd user service to keep the monitor running continuously.
+Use a systemd user service to keep the monitor running.
 
 ### Install the monitor service
 
@@ -110,7 +110,7 @@ systemctl --user status ebs-netwatch.service
 journalctl --user -u ebs-netwatch.service -n 100 --no-pager
 ```
 
-### Verify that logs are growing
+### Verify logs
 
 ```bash
 wc -l data/checks-*.jsonl
@@ -119,7 +119,7 @@ wc -l data/checks-*.jsonl
 tail -n 3 data/checks-*.jsonl
 ```
 
-## Raw logs and manifest
+## Raw logs
 
 - Daily raw logs are written to `data/checks-YYYY-MM-DD.jsonl`
 - `data/checks.jsonl` is treated as a legacy local file
@@ -127,11 +127,9 @@ tail -n 3 data/checks-*.jsonl
 - The dashboard uses `/api/status` in local mode
 - The static GitHub Pages page uses `data/manifest.json` and the raw JSONL files directly
 
-## Static GitHub Pages mode
+## Static GitHub Pages
 
-The published static site is prepared under `docs/` so GitHub Pages can serve it as a plain static site.
-
-The static page loads:
+GitHub Pages serves the prepared static site from `docs/`.
 
 - `docs/index.html`
 - `docs/style.css`
@@ -157,11 +155,11 @@ The script:
 - commits only if those staged publish files changed
 - pushes to the current branch
 
-Static assets under `docs/` are updated by normal functional commits, not by the automatic log publish path.
+Static assets under `docs/` are updated by normal functional commits.
 
 ## Publish schedule
 
-Run publishing every 30 minutes with a systemd user timer. The monitor stays separate; only the publish script runs on this schedule.
+Run publishing every 30 minutes with a systemd user timer. The monitor stays separate.
 
 ### Install the user timer
 
@@ -223,6 +221,5 @@ WantedBy=timers.target
 
 ## Notes
 
-- The implementation stays intentionally small.
-- The dashboard and logs stay on the local machine unless you publish the raw logs and static site.
+- The dashboard and logs stay local unless you publish the raw logs and static site.
 - `config.json` stays ignored by Git unless you choose to track it explicitly.

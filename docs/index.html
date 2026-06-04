@@ -4,7 +4,7 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>EBS Netwatch</title>
-  <link rel="stylesheet" href="style.css?v=20260604-3">
+  <link rel="stylesheet" href="style.css?v=20260604-4">
 </head>
 <body>
   <main class="page">
@@ -35,13 +35,6 @@
         </div>
         <div id="bucket-range" class="bucket-range"></div>
       </div>
-      <div class="status-legend" aria-label="Status legend">
-        <div class="legend-item"><span class="legend-swatch status-operational" aria-hidden="true"></span><span>Green: normal</span></div>
-        <div class="legend-item"><span class="legend-swatch status-degraded" aria-hidden="true"></span><span>Yellow: degraded</span></div>
-        <div class="legend-item"><span class="legend-swatch status-major" aria-hidden="true"></span><span>Red: outage</span></div>
-        <div class="legend-item"><span class="legend-swatch status-local" aria-hidden="true"></span><span>Dark: local issue</span></div>
-        <div class="legend-item"><span class="legend-swatch status-unknown" aria-hidden="true"></span><span>Gray: maintenance or no data</span></div>
-      </div>
       <div id="components" class="components" aria-live="polite"></div>
     </section>
 
@@ -54,6 +47,16 @@
         <button id="cycle-clear" class="text-button" type="button">Hide details</button>
       </div>
       <div id="cycle-detail" class="cycle-detail"></div>
+    </section>
+
+    <section class="card legend-card" aria-label="Status legend">
+      <div class="status-legend">
+        <div class="legend-item"><span class="legend-bucket status-operational" aria-hidden="true"></span><span>Normal</span></div>
+        <div class="legend-item"><span class="legend-bucket status-degraded" aria-hidden="true"></span><span>Degraded</span></div>
+        <div class="legend-item"><span class="legend-bucket status-major" aria-hidden="true"></span><span>Outage</span></div>
+        <div class="legend-item"><span class="legend-bucket status-local" aria-hidden="true"></span><span>Local issue</span></div>
+        <div class="legend-item"><span class="legend-bucket status-unknown" aria-hidden="true"></span><span>Maintenance / no data</span></div>
+      </div>
     </section>
 
     <details id="recent-events-panel" class="card collapsible events-card">
@@ -72,6 +75,6 @@
     </footer>
   </main>
   <div id="status-tooltip" class="status-tooltip" role="tooltip" aria-hidden="true"></div>
-  <script src="app.js?v=20260604-3"></script>
+  <script src="app.js?v=20260604-4"></script>
 </body>
 </html>
